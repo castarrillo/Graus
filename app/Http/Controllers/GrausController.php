@@ -19,7 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
-class GaloisController extends Controller
+class GrausController extends Controller
 {
   /*====================================================================
     CRUD - COLEGIOS (Solo Administrador)

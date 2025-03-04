@@ -295,7 +295,7 @@ class AuthController extends Controller
    * @param Request $request
    * @return \Illuminate\Http\JsonResponse
    */
-  public function resetPasswordGalois(Request $request)
+  public function resetPassword(Request $request)
   {
     $request->validate([
       'email'    => 'required|email|exists:users,email',
