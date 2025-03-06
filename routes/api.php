@@ -20,8 +20,9 @@ use App\Http\Controllers\GrausController;
 // ==============================
 Route::post('auth/login', [AuthController::class, 'login']);
 Route::post('auth/register', [AuthController::class, 'register']);
-Route::post('auth/sendResetLink', [AuthController::class, 'sendResetLink']);
-Route::post('auth/sendResetCode', [AuthController::class, 'sendResetCode']);
+Route::post('auth/sendResetEmail', [AuthController::class, 'sendResetEmail']);
+Route::post('auth/sendResetSMS', [AuthController::class, 'sendResetSMS']);
+Route::post('auth/sendResetWhatsapp', [AuthController::class, 'sendResetWhatsapp']);
 Route::post('auth/resetPassword', [AuthController::class, 'resetPassword']);
 
 // ==============================

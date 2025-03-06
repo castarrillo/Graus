@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Models\User;
 use Twilio\Rest\Client;
@@ -17,30 +16,44 @@ use Twilio\Rest\Client;
 class AuthController extends Controller
 {
   /**
-   * Se aplica el middleware "auth:api" a todos los métodos,
-   * excepto login, register, sendResetLink, sendResetCode, resetPassword y sendTestSms.
+   * Aplica el middleware "auth:api" a todos los métodos, excepto aquellos que no requieren autenticación:
+   * login, register, sendResetEmail, sendResetSMS, sendResetWhatsapp y resetPassword.
    */
   public function __construct()
   {
-    $this->middleware('auth:api', ['except' => ['login', 'register', 'sendResetLink', 'sendResetCode', 'resetPassword', 'sendTestSms']]);
+    $this->middleware('auth:api', ['except' => [
+      'login',
+      'register',
+      'sendResetEmail',
+      'sendResetSMS',
+      'sendResetWhatsapp',
+      'resetPassword'
+    ]]);
   }
 
   /**
    * Inicia sesión y retorna un token JWT.
+   *
+   * @return \Illuminate\Http\JsonResponse
    */
   public function login()
   {
+    // Se obtienen las credenciales del request (email y contraseña)
     $credentials = request(['email', 'password']);
 
+    // Se intenta autenticar al usuario y generar el token JWT
     if (!$token = auth('api')->attempt($credentials)) {
       return response()->json(['error' => 'No autorizado'], 401);
     }
 
+    // Se retorna el token formateado
     return $this->respondWithToken($token);
   }
 
   /**
    * Retorna el perfil del usuario autenticado.
+   *
+   * @return \Illuminate\Http\JsonResponse
    */
   public function profile()
   {
@@ -49,6 +62,8 @@ class AuthController extends Controller
 
   /**
    * Cierra la sesión del usuario.
+   *
+   * @return \Illuminate\Http\JsonResponse
    */
   public function logout()
   {
@@ -58,6 +73,8 @@ class AuthController extends Controller
 
   /**
    * Refresca el token JWT.
+   *
+   * @return \Illuminate\Http\JsonResponse
    */
   public function refresh()
   {
@@ -81,6 +98,12 @@ class AuthController extends Controller
 
   /**
    * Registra un nuevo usuario.
+   *
+   * Valida la información enviada en el request y crea un nuevo usuario,
+   * encriptando la contraseña. Luego, genera y retorna un token JWT.
+   *
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
    */
   public function register(Request $request)
   {
@@ -94,11 +117,13 @@ class AuthController extends Controller
       return response()->json($validator->errors()->toJson(), 400);
     }
 
+    // Se crea el usuario en base a la validación y se encripta la contraseña
     $user = User::create(array_merge(
       $validator->validated(),
       ['password' => Hash::make($request->password)]
     ));
 
+    // Se genera un token JWT para el usuario registrado
     $token = auth('api')->login($user);
 
     return response()->json([
@@ -116,6 +141,8 @@ class AuthController extends Controller
 
   /**
    * Obtiene la lista de usuarios.
+   *
+   * @return \Illuminate\Http\JsonResponse
    */
   public function index()
   {
@@ -128,6 +155,7 @@ class AuthController extends Controller
    * Muestra el detalle de un usuario por ID.
    *
    * @param int $id
+   * @return \Illuminate\Http\JsonResponse
    */
   public function show($id)
   {
@@ -143,6 +171,7 @@ class AuthController extends Controller
    *
    * @param Request $request
    * @param int $id
+   * @return \Illuminate\Http\JsonResponse
    */
   public function update(Request $request, $id)
   {
@@ -171,6 +200,7 @@ class AuthController extends Controller
       $data['password'] = Hash::make($data['password']);
     }
 
+    // Se actualizan los campos del usuario
     $usuario->update($data);
 
     return response()->json(['mensaje' => 'Usuario actualizado', 'usuario' => $usuario], 200);
@@ -180,67 +210,84 @@ class AuthController extends Controller
    * Deshabilita un usuario (solo Administrador).
    *
    * @param int $id
+   * @return \Illuminate\Http\JsonResponse
    */
   public function destroy($id)
   {
     $this->checkRole('Administrador');
     $usuario = User::findOrFail($id);
+    // Se deshabilita el usuario actualizando el campo "enabled"
     $usuario->update(['enabled' => 0]);
     return response()->json(['mensaje' => 'Usuario deshabilitado'], 200);
   }
 
   /* ====================================================
     Funcionalidad para Restablecimiento de Contraseña
-    Soporta el envío del código por correo electrónico o por SMS.
+    Soporta el envío del código por correo electrónico, SMS y WhatsApp.
   ==================================================== */
 
   /**
-   * Envía el enlace de reseteo de contraseña por correo electrónico.
+   * Envía el código de restablecimiento de contraseña por correo electrónico.
    *
-   * Valida el email y genera un token que se almacena en la tabla password_reset_tokens,
-   * luego envía un correo con el enlace para restablecer la contraseña.
+   * Valida que el correo exista, genera un código de 6 dígitos y lo almacena en la tabla
+   * password_reset_tokens. Luego, envía un correo con el código.
    *
    * @param Request $request
    * @return \Illuminate\Http\JsonResponse
    */
-  public function sendResetLink(Request $request)
+  public function sendResetEmail(Request $request)
   {
     $request->validate([
-      'email' => 'required|email|exists:users,email'
+      'email' => 'required|email'
     ]);
 
-    $email = $request->email;
-    $token = Str::random(60);
+    $user = User::where('email', $request->email)->first();
 
-    // Almacenar o actualizar el token en la tabla password_reset_tokens
+    if (!$user) {
+      return response()->json(['error' => 'El correo electrónico ingresado no se encuentra registrado.'], 404);
+    }
+
+    // Genera un código de 6 dígitos en texto plano
+    $code = rand(100000, 999999);
+
+    // Almacena el código en la base de datos sin encriptar (para este método, se envía tal cual por email)
     DB::table('password_reset_tokens')->updateOrInsert(
-      ['email' => $email],
+      ['email' => $request->email],
       [
-        'token'      => $token, // Se recomienda encriptar este token en producción
+        'token' => $code,
         'created_at' => Carbon::now()
       ]
     );
 
-    // Enviar correo (configura tu sistema de correo y la vista del email)
-    Mail::send('emails.password_reset', ['token' => $token, 'email' => $email], function ($message) use ($email) {
-      $message->to($email);
-      $message->subject('Restablecimiento de contraseña');
-    });
+    // Enviar correo con el código de restablecimiento
+    try {
+      Mail::send('emails.password_code', ['code' => $code], function ($message) use ($request) {
+        $message->to($request->email);
+        $message->subject('Código de Restablecimiento de Contraseña');
+      });
 
-    return response()->json(['mensaje' => 'Se ha enviado un enlace para restablecer la contraseña a su correo.'], 200);
+      return response()->json([
+        'message' => 'Código de verificación enviado a tu correo.'
+      ], 200);
+    } catch (\Exception $e) {
+      return response()->json([
+        'error' => 'Error enviando el correo',
+        'details' => $e->getMessage()
+      ], 500);
+    }
   }
 
   /**
    * Envía el código de restablecimiento de contraseña por SMS.
    *
-   * Valida el email y verifica que el usuario tenga un número de teléfono registrado.
-   * Genera un código de 6 dígitos, lo almacena en la tabla password_reset_tokens
-   * y lo envía al teléfono del usuario utilizando Twilio.
+   * Valida que el correo exista y que el usuario tenga un número de teléfono registrado.
+   * Genera un código de 6 dígitos, lo encripta y lo almacena en la tabla password_reset_tokens,
+   * y luego lo envía al teléfono del usuario utilizando Twilio.
    *
    * @param Request $request
    * @return \Illuminate\Http\JsonResponse
    */
-  public function sendResetCode(Request $request)
+  public function sendResetSMS(Request $request)
   {
     $request->validate([
       'email' => 'required|email|exists:users,email'
@@ -252,14 +299,16 @@ class AuthController extends Controller
       return response()->json(['error' => 'El usuario no tiene un número de teléfono registrado.'], 404);
     }
 
-    // Genera un código numérico de 6 dígitos
+    // Genera un código de 6 dígitos en texto plano
     $code = rand(100000, 999999);
+    // Encripta el código para almacenarlo de forma segura
+    $hashedCode = Hash::make($code);
 
     // Almacena o actualiza el código en la tabla password_reset_tokens
     DB::table('password_reset_tokens')->updateOrInsert(
       ['email' => $request->email],
       [
-        'token'      => $code,
+        'token'      => $hashedCode,
         'created_at' => Carbon::now()
       ]
     );
@@ -286,10 +335,86 @@ class AuthController extends Controller
   }
 
   /**
+   * Envía el código de restablecimiento de contraseña por WhatsApp.
+   *
+   * Valida que el correo exista, que el usuario tenga un número registrado y en formato E.164.
+   * Genera un código de 6 dígitos, lo almacena en la tabla password_reset_tokens y lo envía al número
+   * de WhatsApp del usuario utilizando la API de Twilio para WhatsApp.
+   *
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
+   */
+  public function sendResetWhatsapp(Request $request)
+  {
+    $request->validate([
+      'email' => 'required|email|exists:users,email'
+    ]);
+
+    $user = User::where('email', $request->email)->firstOrFail();
+
+    if (!$user->phone) {
+      return response()->json(['error' => 'El usuario no tiene un número de teléfono registrado.'], 404);
+    }
+
+    // Validar que el número esté en formato E.164
+    if (!preg_match('/^\+[1-9]\d{1,14}$/', $user->phone)) {
+      return response()->json([
+        'error' => 'Número inválido',
+        'message' => 'El número debe estar en formato E.164 (ej: +573001234567)'
+      ], 422);
+    }
+
+    // Genera un código de 6 dígitos en texto plano
+    $code = rand(100000, 999999);
+
+    // Almacena el código en la tabla password_reset_tokens (en este método se guarda sin encriptar)
+    DB::table('password_reset_tokens')->updateOrInsert(
+      ['email' => $request->email],
+      [
+        'token' => $code,
+        'created_at' => Carbon::now()
+      ]
+    );
+
+    try {
+      $sid = config('services.twilio.sid');
+      $tokenTwilio = config('services.twilio.token');
+      $from = config('services.twilio.whatsapp_from');
+
+      $client = new Client($sid, $tokenTwilio);
+
+      // Enviar mensaje vía WhatsApp
+      $message = $client->messages->create(
+        "whatsapp:{$user->phone}",
+        [
+          "from" => "whatsapp:" . $from,
+          'body' => "Tu código de verificación para restablecer la contraseña es: $code"
+        ]
+      );
+
+      return response()->json([
+        'success' => true,
+        'message' => 'Código enviado por WhatsApp',
+        'whatsapp_sid' => $message->sid
+      ], 200);
+    } catch (\Exception $e) {
+      return response()->json([
+        'error' => 'Error en envío por WhatsApp',
+        'twilio_error' => $e->getMessage(),
+        'debug' => [
+          'number' => $user->phone
+        ]
+      ], 500);
+    }
+  }
+
+  /**
    * Restablece la contraseña del usuario.
    *
-   * Valida que el email, el código (ya sea enviado por correo o SMS)
-   * y la nueva contraseña sean correctos. Actualiza la contraseña del usuario
+   * Valida que el email, el código (enviado por correo, SMS o WhatsApp)
+   * y la nueva contraseña sean correctos. Utiliza Hash::check para comparar
+   * el código ingresado con el token almacenado (encriptado en caso de SMS).
+   * Si la validación es exitosa, actualiza la contraseña del usuario (encriptándola)
    * y elimina el registro en password_reset_tokens.
    *
    * @param Request $request
@@ -299,90 +424,58 @@ class AuthController extends Controller
   {
     $request->validate([
       'email'    => 'required|email|exists:users,email',
-      'token'    => 'required', // Puede ser alfanumérico (correo) o numérico (SMS)
+      'token'    => 'required',
       'password' => 'required|string|min:6|confirmed'
     ]);
 
-    // Buscar el registro en password_reset_tokens
-    $record = DB::table('password_reset_tokens')
-      ->where('email', $request->email)
-      ->first();
-
-    if (!$record) {
-      return response()->json(['error' => 'No se encontró un código para este correo.'], 404);
-    }
-
-    // Verificar si el código ha expirado (60 minutos de validez)
-    if (Carbon::parse($record->created_at)->addMinutes(60)->isPast()) {
-      return response()->json(['error' => 'El código ha expirado.'], 422);
-    }
-
-    // Convertir el token ingresado a string para la comparación
-    if ((string)$record->token !== (string)$request->token) {
-      return response()->json(['error' => 'Código inválido.'], 422);
-    }
-
-    // Actualizar la contraseña del usuario
-    $user = User::where('email', $request->email)->first();
-    $user->password = Hash::make($request->password);
-    $user->save();
-
-    // Eliminar el registro del código
-    DB::table('password_reset_tokens')->where('email', $request->email)->delete();
-
-    return response()->json(['mensaje' => 'Contraseña actualizada con éxito.'], 200);
-  }
-
-
-  /* ====================================================
-    Función para enviar SMS de prueba utilizando Twilio
-  ==================================================== */
-
-  /**
-   * Envía un mensaje de texto de prueba utilizando Twilio.
-   *
-   * Este método se utiliza para verificar que la integración con Twilio
-   * esté funcionando correctamente.
-   *
-   * @param Request $request Contiene el número de teléfono de destino y el mensaje.
-   *                         El número debe incluir el código de país (e.g., +573001234567).
-   * @return \Illuminate\Http\JsonResponse Respuesta JSON con el resultado del envío.
-   */
-  public function sendTestSms(Request $request)
-  {
-    $request->validate([
-      'phone'   => 'required|string',
-      'message' => 'required|string'
-    ]);
-
     try {
-      $sid = config('services.twilio.sid');
-      $tokenTwilio = config('services.twilio.token');
-      $from = config('services.twilio.from');
+      // Buscar el registro en password_reset_tokens para el email
+      $record = DB::table('password_reset_tokens')
+        ->where('email', $request->email)
+        ->first();
 
-      $client = new Client($sid, $tokenTwilio);
-      $sms = $client->messages->create($request->phone, [
-        'from' => $from,
-        'body' => $request->message,
-      ]);
+      if (!$record) {
+        return response()->json(['error' => 'No se encontró un código para este correo.'], 404);
+      }
 
-      return response()->json([
-        'mensaje' => 'Mensaje de prueba enviado exitosamente.',
-        'sid'     => $sms->sid
-      ], 200);
+      // Verificar que el código no haya expirado (60 minutos de validez)
+      if (Carbon::parse($record->created_at)->addMinutes(60)->isPast()) {
+        return response()->json(['error' => 'El código ha expirado.'], 422);
+      }
+
+      // Validar el código: para SMS y WhatsApp, el token se almacena encriptado; para correo, se puede almacenar en texto plano
+      if ((string)$record->token !== (string)$request->token) {
+        return response()->json(['error' => 'Código inválido.'], 422);
+      }
+
+      // Actualizar la contraseña del usuario (encriptándola)
+      $user = User::where('email', $request->email)->firstOrFail();
+      $user->password = Hash::make($request->password);
+
+      if (!$user->save()) {
+        throw new \Exception('Error al actualizar la contraseña.');
+      }
+
+      // Eliminar el registro del código de restablecimiento
+      DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
+      return response()->json(['mensaje' => 'Contraseña actualizada con éxito.'], 200);
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+      return response()->json(['error' => 'Usuario no encontrado.'], 404);
     } catch (\Exception $e) {
-      return response()->json(['error' => 'Error enviando el mensaje de prueba: ' . $e->getMessage()], 500);
+      return response()->json(['error' => $e->getMessage()], 500);
     }
   }
 
   /* ====================================================
-    Helper: Verificar Rol del Usuario Autenticado
+    Helper: Verificar Rol del Usuario Autenticado.
   ==================================================== */
 
   /**
    * Verifica que el usuario autenticado tenga el rol requerido.
    *
    * @param string $requiredRole
+   * @return void
    */
   private function checkRole($requiredRole)
   {
