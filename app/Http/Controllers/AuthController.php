@@ -90,6 +90,7 @@ class AuthController extends Controller
   protected function respondWithToken($token)
   {
     return response()->json([
+      'user'         => auth('api')->user(),
       'access_token' => $token,
       'token_type'   => 'bearer',
       'expires_in'   => time() + (60 * 60 * 24)
