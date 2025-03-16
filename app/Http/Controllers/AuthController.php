@@ -136,6 +136,207 @@ class AuthController extends Controller
     ], 201);
   }
 
+  /**
+   * Envía un código de verificación al correo electrónico registrado del usuario.
+   *
+   * Se espera recibir en el request:
+   * - user_id: El ID del usuario.
+   *
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
+   */
+  public function sendEmailCode(Request $request)
+  {
+    $validator = Validator::make($request->all(), [
+      'user_id' => 'required|exists:users,id',
+    ]);
+
+    if ($validator->fails()) {
+      return response()->json($validator->errors(), 422);
+    }
+
+    $user = User::findOrFail($request->user_id);
+
+    // Generar un código de verificación de 6 dígitos
+    $code = rand(100000, 999999);
+
+    // Guardar el código de verificación de forma encriptada en el campo 'email_verification_code'
+    // y resetear la verificación previa
+    $user->email_verification_code = Hash::make($code);
+    $user->email_verified_at = null;
+    $user->save();
+
+    // Enviar el correo electrónico con el código de verificación
+    try {
+      Mail::send('emails.verification_code', ['code' => $code], function ($message) use ($user) {
+        $message->to($user->email);
+        $message->subject('Código de verificación de correo electrónico');
+      });
+    } catch (\Exception $e) {
+      return response()->json([
+        'error' => 'Error enviando el correo de verificación: ' . $e->getMessage()
+      ], 500);
+    }
+
+    return response()->json([
+      'message' => 'Código de verificación enviado a tu correo electrónico.'
+    ], 200);
+  }
+
+  /**
+   * Verifica el código de verificación recibido por el usuario.
+   *
+   * Se espera recibir en el request:
+   * - user_id: El ID del usuario.
+   * - verification_code: El código que el usuario recibió por correo.
+   *
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
+   */
+  public function verifyEmailCode(Request $request)
+  {
+    $validator = Validator::make($request->all(), [
+      'user_id'           => 'required|exists:users,id',
+      'verification_code' => 'required|string',
+    ]);
+
+    if ($validator->fails()) {
+      return response()->json($validator->errors(), 422);
+    }
+
+    $user = User::findOrFail($request->user_id);
+
+    if (!$user->email_verification_code) {
+      return response()->json([
+        'error' => 'No hay un código de verificación pendiente para este usuario.'
+      ], 422);
+    }
+
+    // Comparar el código ingresado con el almacenado (encriptado)
+    if (!Hash::check($request->verification_code, $user->email_verification_code)) {
+      return response()->json([
+        'error' => 'Código de verificación inválido.'
+      ], 422);
+    }
+
+    // Si el código es correcto, se elimina el código almacenado y se establece la fecha de verificación
+    $user->email_verification_code = null;
+    $user->email_verified_at = now();
+    $user->save();
+
+    return response()->json([
+      'message' => 'Correo electrónico verificado correctamente.'
+    ], 200);
+  }
+
+  /**
+   * Actualiza el número de teléfono de un usuario, formateándolo a E.164 y enviando un código
+   * de verificación por SMS.
+   *
+   * Se espera recibir en el request:
+   * - user_id: el ID del usuario.
+   * - phone: el número de teléfono sin código de nacionalidad.
+   * - codigo_nacional: el código de nacionalidad (por ejemplo, "57" para Colombia).
+   *
+   * Ejemplo de formato final: +573057921778
+   *
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
+   */
+  public function addPhoneNumber(Request $request)
+  {
+    $validator = Validator::make($request->all(), [
+      'user_id'         => 'required|exists:users,id',
+      'phone'           => 'required|string',
+      'codigo_nacional' => 'required|string'
+    ]);
+
+    if ($validator->fails()) {
+      return response()->json($validator->errors(), 422);
+    }
+
+    $user = User::findOrFail($request->user_id);
+
+    // Eliminar el signo "+" en caso de que venga incluido en el código de nacionalidad
+    $codigoNacional = ltrim($request->codigo_nacional, '+');
+    // Formatear el número concatenando "+" + código de nacionalidad + número de teléfono
+    $formattedPhone = '+' . $codigoNacional . $request->phone;
+
+    // Validar que el número cumpla con el formato E.164
+    if (!preg_match('/^\+[1-9]\d{1,14}$/', $formattedPhone)) {
+      return response()->json(['error' => 'El número de teléfono no cumple con el formato E.164'], 422);
+    }
+
+    // Actualizar el número de teléfono y resetear la verificación
+    $user->phone = $formattedPhone;
+    $user->phone_verified_at = null;
+    // Generar código de verificación de 6 dígitos
+    $code = rand(100000, 999999);
+    // Almacenar el código de verificación de forma encriptada
+    $user->phone_verification_code = Hash::make($code);
+    $user->save();
+
+    // Enviar SMS con el código de verificación usando la lógica existente
+    try {
+      $sid         = config('services.twilio.sid');
+      $tokenTwilio = config('services.twilio.token');
+      $from        = config('services.twilio.from');
+
+      $client = new Client($sid, $tokenTwilio);
+      $client->messages->create(
+        $formattedPhone,
+        [
+          'from' => $from,
+          'body' => "Tu código de verificación es: $code"
+        ]
+      );
+    } catch (\Exception $e) {
+      return response()->json(['error' => 'Error enviando SMS: ' . $e->getMessage()], 500);
+    }
+
+    return response()->json(['message' => 'Número de teléfono actualizado y código de verificación enviado.'], 200);
+  }
+
+  /**
+   * Verifica el número de teléfono comparando el código enviado por SMS con el que se tiene almacenado.
+   *
+   * Se espera recibir en el request:
+   * - user_id: el ID del usuario.
+   * - verification_code: el código que recibió el usuario.
+   *
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
+   */
+  public function verifyPhoneNumber(Request $request)
+  {
+    $validator = Validator::make($request->all(), [
+      'user_id'           => 'required|exists:users,id',
+      'verification_code' => 'required|string'
+    ]);
+
+    if ($validator->fails()) {
+      return response()->json($validator->errors(), 422);
+    }
+
+    $user = User::findOrFail($request->user_id);
+
+    if (!$user->phone_verification_code) {
+      return response()->json(['error' => 'No hay un código de verificación pendiente para este usuario.'], 422);
+    }
+
+    // Comparar el código ingresado con el código almacenado (encriptado)
+    if (!Hash::check($request->verification_code, $user->phone_verification_code)) {
+      return response()->json(['error' => 'Código de verificación inválido.'], 422);
+    }
+
+    // Actualizar el estado de verificación: borrar el código y establecer la fecha de verificación
+    $user->phone_verification_code = null;
+    $user->phone_verified_at = now();
+    $user->save();
+
+    return response()->json(['message' => 'Número de teléfono verificado correctamente.'], 200);
+  }
+
   /* ====================================================
     CRUD Completo para la Gestión de Usuarios (sólo Administrador)
   ==================================================== */
@@ -250,12 +451,14 @@ class AuthController extends Controller
 
     // Genera un código de 6 dígitos en texto plano
     $code = rand(100000, 999999);
+    // Encripta el código para almacenarlo de forma segura
+    $hashedCode = Hash::make($code);
 
     // Almacena el código en la base de datos sin encriptar (para este método, se envía tal cual por email)
     DB::table('password_reset_tokens')->updateOrInsert(
       ['email' => $request->email],
       [
-        'token' => $code,
+        'token' => $hashedCode,
         'created_at' => Carbon::now()
       ]
     );
@@ -367,12 +570,14 @@ class AuthController extends Controller
 
     // Genera un código de 6 dígitos en texto plano
     $code = rand(100000, 999999);
+    // Encripta el código para almacenarlo de forma segura
+    $hashedCode = Hash::make($code);
 
     // Almacena el código en la tabla password_reset_tokens (en este método se guarda sin encriptar)
     DB::table('password_reset_tokens')->updateOrInsert(
       ['email' => $request->email],
       [
-        'token' => $code,
+        'token'      => $hashedCode,
         'created_at' => Carbon::now()
       ]
     );
@@ -445,7 +650,8 @@ class AuthController extends Controller
       }
 
       // Validar el código: para SMS y WhatsApp, el token se almacena encriptado; para correo, se puede almacenar en texto plano
-      if ((string)$record->token !== (string)$request->token) {
+      // Validar el código usando Hash::check para comparar con el token encriptado
+      if (!Hash::check($request->token, $record->token)) {
         return response()->json(['error' => 'Código inválido.'], 422);
       }
 

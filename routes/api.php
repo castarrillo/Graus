@@ -24,6 +24,10 @@ Route::post('auth/sendResetEmail', [AuthController::class, 'sendResetEmail']);
 Route::post('auth/sendResetSMS', [AuthController::class, 'sendResetSMS']);
 Route::post('auth/sendResetWhatsapp', [AuthController::class, 'sendResetWhatsapp']);
 Route::post('auth/resetPassword', [AuthController::class, 'resetPassword']);
+Route::post('auth/sendEmailCode', [AuthController::class, 'sendEmailCode']);
+Route::post('auth/verifyEmailCode', [AuthController::class, 'verifyEmailCode']);
+Route::post('auth/addPhoneNumber', [AuthController::class, 'addPhoneNumber']);
+Route::post('auth/verifyPhoneNumber', [AuthController::class, 'verifyPhoneNumber']);
 
 // ==============================
 // Rutas Protegidas (con middleware auth:api)

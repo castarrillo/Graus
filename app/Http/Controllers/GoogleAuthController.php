@@ -46,34 +46,6 @@ class GoogleAuthController extends Controller
       ]);
     }
 
-    // Intentamos obtener el número de teléfono usando la API de Google People
-    $phone = null;
-    if (in_array('https://www.googleapis.com/auth/user.phonenumbers.read', $googleUser->approvedScopes)) {
-      try {
-        $client = new Client();
-        $response = $client->get('https://people.googleapis.com/v1/people/me', [
-          'query'   => ['personFields' => 'phoneNumbers'],
-          'headers' => [
-            'Authorization' => 'Bearer ' . $googleUser->token,
-          ],
-        ]);
-
-        $peopleData = json_decode($response->getBody(), true);
-        if (isset($peopleData['phoneNumbers']) && count($peopleData['phoneNumbers']) > 0) {
-          // Por ejemplo, tomamos el primer número encontrado
-          $phone = $peopleData['phoneNumbers'][0]['value'];
-        }
-      } catch (\Exception $e) {
-        // Si ocurre un error al obtener el teléfono, puedes loguearlo y continuar
-        \Log::error('Error obteniendo teléfono: ' . $e->getMessage());
-      }
-    }
-
-    // Actualiza el campo phone del usuario (si se obtuvo el número)
-    if ($phone) {
-      $user->update(['phone' => $phone]);
-    }
-
     // Genera token JWT con el guard 'api'
     if (!$token = auth('api')->login($user)) {
       return response()->json(['error' => 'No fue posible generar el token'], 500);
