@@ -3,7 +3,7 @@ return [
   'paths' => ['api/*', 'sanctum/csrf-cookie'],
   'allowed_methods' => ['*'],
   'allowed_origins' => env('APP_ENV') === 'production'
-    ? ['https://graus.lat', 'https://www.graus.lat']
+    ? ['https://graus.lat', 'https://api.graus.lat']
     : ['*'],
   'allowed_origins_patterns' => [],
   'allowed_headers' => ['*'],
