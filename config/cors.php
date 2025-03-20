@@ -1,6 +1,6 @@
 <?php
 return [
-  'paths' => ['api/*', 'sanctum/csrf-cookie'],
+  'paths' => ['api/*', 'auth/*', 'sanctum/csrf-cookie'],
   'allowed_methods' => ['*'],
   'allowed_origins' => env('APP_ENV') === 'production'
     ? ['https://graus.lat', 'https://api.graus.lat']
