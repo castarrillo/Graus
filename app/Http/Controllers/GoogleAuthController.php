@@ -57,7 +57,7 @@ class GoogleAuthController extends Controller
       'user'         => $user,
       'access_token' => $token,
       'token_type'   => 'bearer',
-      'expires_in'   => time() + (60 * 60),
+      'expires_in'   => 86400,
     ], 200);
   }
 }

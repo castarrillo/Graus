@@ -9,7 +9,6 @@
     <h2>Restablecimiento de Contraseña</h2>
     <p>Tu código de verificación es:</p>
 
-    <!-- Asegúrate de usar $code directamente, no como array -->
     <div style="font-size: 24px; color: #2d3748; padding: 10px; background: #f7fafc; border: 1px solid #e2e8f0;">
         {{ $code }} 
     </div>

@@ -93,7 +93,7 @@ class AuthController extends Controller
       'user'         => auth('api')->user(),
       'access_token' => $token,
       'token_type'   => 'bearer',
-      'expires_in'   => time() + (60 * 60 * 24)
+      'expires_in'   => 86400
     ]);
   }
 
@@ -132,7 +132,7 @@ class AuthController extends Controller
       'user'         => $user,
       'access_token' => $token,
       'token_type'   => 'bearer',
-      'expires_in'   => time() + (60 * 60 * 24)
+      'expires_in'   => 86400
     ], 201);
   }
 

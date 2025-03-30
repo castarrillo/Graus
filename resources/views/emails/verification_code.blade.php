@@ -43,9 +43,9 @@
         <p>Tu código de verificación es: <span class="code">{{ $code }}</span></p>
         <p>Por favor, ingresa este código en la aplicación para verificar tu correo electrónico.</p>
         <p>Si no solicitaste este código, por favor ignora este mensaje.</p>
-        <p>Saludos,<br>El equipo de [Nombre de la Aplicación]</p>
+        <p>Saludos,<br>El equipo de Graus</p>
         <div class="footer">
-            <p>&copy; {{ date('Y') }} [Nombre de la Aplicación]. Todos los derechos reservados.</p>
+            <p>&copy; {{ date('Y') }} Graus. Todos los derechos reservados.</p>
         </div>
     </div>
 </body>
