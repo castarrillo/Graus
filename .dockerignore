@@ -1,0 +1,7 @@
+.git
+vendor
+node_modules
+public/build
+storage
+.env
+.DS_Store

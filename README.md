@@ -219,6 +219,16 @@ Reducir la deserción escolar en matemáticas en un **30%** para 2030 mediante u
    php artisan queue:work
    ```
 
+7. **Iniciar con Docker (opcional):**
+   Si prefieres ejecutar el proyecto mediante contenedores, asegúrate de tener
+   [Docker](https://www.docker.com/) y [Docker Compose](https://docs.docker.com/compose/)
+   instalados. Luego ejecuta:
+   ```bash
+   docker-compose up --build
+   ```
+   El servidor quedará disponible en `http://localhost:8000` y se iniciará
+   una instancia de MySQL en el puerto `3306`.
+
 ---
 
 ## Implementaciones Destacadas
