@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Routing\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
@@ -535,7 +534,39 @@ class AuthController extends Controller
       return response()->json(['error' => 'Error enviando SMS: ' . $e->getMessage()], 500);
     }
 
-    return response()->json(['mensaje' => 'Se ha enviado un código para restablecer la contraseña a tu teléfono.'], 200);
+      return response()->json(['mensaje' => 'Se ha enviado un código para restablecer la contraseña a tu teléfono.'], 200);
+  }
+
+  /**
+   * Envía un SMS de prueba para verificar la configuración de Twilio.
+   *
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
+   */
+  public function sendTestSms(Request $request)
+  {
+    $request->validate([
+      'phone' => 'required|string'
+    ]);
+
+    try {
+      $sid   = config('services.twilio.sid');
+      $token = config('services.twilio.token');
+      $from  = config('services.twilio.from');
+
+      $client = new Client($sid, $token);
+      $client->messages->create(
+        $request->phone,
+        [
+          'from' => $from,
+          'body' => 'Mensaje de prueba desde Graus.'
+        ]
+      );
+
+      return response()->json(['mensaje' => 'SMS de prueba enviado.'], 200);
+    } catch (\Exception $e) {
+      return response()->json(['error' => 'Error enviando SMS: ' . $e->getMessage()], 500);
+    }
   }
 
   /**
